@@ -13,38 +13,14 @@ A comprehensive PostgreSQL database system for managing telemedicine operations 
 
 ## Technology Stack
 
-- PostgreSQL 16
+- SQL 
 - Docker & Docker Compose
 - pgAdmin for database management
 
-## Getting Started
-
-### Prerequisites
-
-- Docker Desktop
-- Docker Compose
-
-### Setup
-
-1. Copy env file and adjust values if needed:
-   
-   ```bash
-   cp env.example .env
-   ```
-
-2. Start services:
-   
-   ```bash
-   docker compose up -d
-   ```
-
-3. Access:
-   - Postgres: localhost:5432 (`POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`)
-   - pgAdmin: http://localhost:8080 (login with `PGADMIN_DEFAULT_EMAIL` / `PGADMIN_DEFAULT_PASSWORD`)
 
 ### Project Structure
 
-- `db/init/` – ordered SQL initialization scripts:
+- `db/init/` – SQL initialization scripts:
   - `00_extensions.sql` – required extensions
   - `01_tables.sql` – tables
   - `02_constraints_indexes.sql` – FKs, unique constraints, indexes
@@ -61,6 +37,6 @@ A comprehensive PostgreSQL database system for managing telemedicine operations 
   docker compose down -v && docker compose up -d --build
   ```
 
-### Transparency
 
-This repository was built by me. I used tooling and general guidance for best practices (e.g., CI ideas, docs structure), but all schema design decisions and code were implemented and reviewed by me.
+
+This project was developed as a complete telemedicine database solution with proper SQL structure, Docker configuration, and documentation.
