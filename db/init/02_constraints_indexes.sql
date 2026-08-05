@@ -36,6 +36,16 @@ ALTER TABLE patients
 ALTER TABLE payments 
     ADD CONSTRAINT uk_payments_appointment UNIQUE (appointment_id);
 
+-- Prevent concurrent overlapping bookings for the same doctor. The half-open
+-- range allows one appointment to begin exactly when the previous one ends.
+ALTER TABLE appointments
+    ADD CONSTRAINT excl_appointments_booked_doctor_time
+    EXCLUDE USING gist (
+        doctor_id WITH =,
+        tstzrange(start_ts, end_ts, '[)') WITH &&
+    )
+    WHERE (status = 'BOOKED');
+
 -- Indexes for Performance
 -- Appointments indexes
 CREATE INDEX idx_appointments_doctor_start ON appointments(doctor_id, start_ts);
@@ -43,13 +53,13 @@ CREATE INDEX idx_appointments_patient_start ON appointments(patient_id, start_ts
 CREATE INDEX idx_appointments_status ON appointments(status);
 CREATE INDEX idx_appointments_start_ts ON appointments(start_ts);
 
--- Partial index for upcoming appointments
-CREATE INDEX idx_appointments_upcoming ON appointments(doctor_id, start_ts) 
-WHERE status = 'BOOKED' AND start_ts > NOW();
+-- Runtime queries add start_ts > NOW(); volatile time expressions cannot be
+-- part of an index predicate.
+CREATE INDEX idx_appointments_booked_doctor_start
+    ON appointments(doctor_id, start_ts)
+    WHERE status = 'BOOKED';
 
 -- Patients indexes
-CREATE INDEX idx_patients_phone ON patients(phone);
-CREATE INDEX idx_patients_email ON patients(email);
 CREATE INDEX idx_patients_name ON patients(first_name, last_name);
 
 -- Trigram indexes for fuzzy search
@@ -62,7 +72,6 @@ CREATE INDEX idx_medical_records_patient ON medical_records(patient_id);
 CREATE INDEX idx_medical_records_doctor ON medical_records(doctor_id);
 
 -- Payments indexes
-CREATE INDEX idx_payments_appointment ON payments(appointment_id);
 CREATE INDEX idx_payments_status ON payments(status);
 CREATE INDEX idx_payments_paid_at ON payments(paid_at);
 
