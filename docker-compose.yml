@@ -1,37 +1,144 @@
 services:
   postgres:
-    image: postgres:16
-    container_name: telemed_postgres
+    image: postgres:16.14
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-telemed}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-local-only}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d
+      - ./db:/workspace/db:ro
+      - ./demo:/workspace/demo:ro
+      - ./benchmarks:/workspace/benchmarks:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-telemed}"]
-      interval: 10s
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
 
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: telemed_pgadmin
+  flyway:
+    image: flyway/flyway:12.11.0
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
-    ports:
-      - "8080:80"
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-telemed}
+      FLYWAY_USER: ${POSTGRES_USER:-postgres}
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-change-me-local-only}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_CONNECT_RETRIES: 60
+      FLYWAY_CLEAN_DISABLED: "true"
+      FLYWAY_BASELINE_ON_MIGRATE: "false"
+      FLYWAY_VALIDATE_MIGRATION_NAMING: "true"
+    volumes:
+      - ./db/migrations:/flyway/sql:ro
     depends_on:
       postgres:
         condition: service_healthy
+    command: migrate
+    restart: "no"
+
+  seed:
+    image: postgres:16.14
+    profiles: ["seed"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-telemed}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-local-only}
+    volumes:
+      - ./db/seed:/workspace/db/seed:ro
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+    command:
+      - sh
+      - -c
+      - >-
+        PGPASSWORD="$${POSTGRES_PASSWORD}"
+        psql -v ON_ERROR_STOP=1 -h postgres -U "$${POSTGRES_USER}"
+        -d "$${POSTGRES_DB}" -f /workspace/db/seed/development_seed.sql
+    restart: "no"
+
+  app-user:
+    image: postgres:16.14
+    profiles: ["api"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-telemed}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-local-only}
+      TELEMED_API_DB_USER: ${TELEMED_API_DB_USER:-telemed_api}
+      TELEMED_API_DB_PASSWORD: ${TELEMED_API_DB_PASSWORD:-change-me-local-only}
+    volumes:
+      - ./db/security:/workspace/db/security:ro
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+    command:
+      - sh
+      - -c
+      - >-
+        PGPASSWORD="$${POSTGRES_PASSWORD}"
+        psql -v ON_ERROR_STOP=1 -h postgres -U "$${POSTGRES_USER}"
+        -d "$${POSTGRES_DB}"
+        -v login_name="$${TELEMED_API_DB_USER}"
+        -v login_password="$${TELEMED_API_DB_PASSWORD}"
+        -v membership="telemed_app"
+        -f /workspace/db/security/provision_login.sql
+    restart: "no"
+
+  api:
+    profiles: ["api"]
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    environment:
+      SERVER_PORT: 8081
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-telemed}
+      DB_USER: ${TELEMED_API_DB_USER:-telemed_api}
+      DB_PASSWORD: ${TELEMED_API_DB_PASSWORD:-change-me-local-only}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+    ports:
+      - "${API_PORT:-8081}:8081"
+    depends_on:
+      app-user:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --tries=1 --spider http://localhost:8081/actuator/health
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:9.17
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@telemed.dev}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-change-me-local-only}
+    ports:
+      - "${PGADMIN_PORT:-8080}:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      flyway:
+        condition: service_completed_successfully
     volumes:
       - pgadmin_data:/var/lib/pgadmin
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --output-document=- http://localhost/misc/ping >/dev/null 2>&1
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   pgadmin_data:
-

@@ -17,7 +17,7 @@ DECLARE
     v_expected_foreign_keys TEXT[] := ARRAY[
         'fk_appointments_patient',
         'fk_appointments_doctor',
-        'fk_medical_records_appointment',
+        'fk_medical_records_appointment_identity',
         'fk_medical_records_patient',
         'fk_medical_records_doctor',
         'fk_payments_appointment'

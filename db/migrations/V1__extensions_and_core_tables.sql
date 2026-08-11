@@ -1,7 +1,10 @@
--- Create all tables for the telemedicine system
--- Tables are created in dependency order
+-- Initial PostgreSQL extensions and core telemedicine tables.
+-- Keep this migration immutable after release; add later changes as new versions.
 
--- Patients table
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
 CREATE TABLE patients (
     patient_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     first_name VARCHAR(100) NOT NULL,
@@ -13,7 +16,6 @@ CREATE TABLE patients (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Doctors table
 CREATE TABLE doctors (
     doctor_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     full_name VARCHAR(200) NOT NULL,
@@ -22,7 +24,6 @@ CREATE TABLE doctors (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Appointments table
 CREATE TABLE appointments (
     appointment_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     patient_id UUID NOT NULL,
@@ -32,13 +33,11 @@ CREATE TABLE appointments (
     status VARCHAR(20) NOT NULL DEFAULT 'BOOKED',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
-    
-    -- Basic constraints
-    CONSTRAINT chk_appointment_status CHECK (status IN ('BOOKED', 'CANCELLED', 'COMPLETED')),
+    CONSTRAINT chk_appointment_status
+        CHECK (status IN ('BOOKED', 'CANCELLED', 'COMPLETED')),
     CONSTRAINT chk_appointment_times CHECK (end_ts > start_ts)
 );
 
--- Medical records table
 CREATE TABLE medical_records (
     record_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     appointment_id UUID,
@@ -50,7 +49,6 @@ CREATE TABLE medical_records (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Payments table
 CREATE TABLE payments (
     payment_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     appointment_id UUID NOT NULL,
@@ -60,14 +58,13 @@ CREATE TABLE payments (
     paid_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
-    
-    -- Basic constraints
     CONSTRAINT chk_payment_amount CHECK (amount_rs >= 0),
-    CONSTRAINT chk_payment_method CHECK (method IN ('CASH', 'UPI', 'CARD', 'WALLET')),
-    CONSTRAINT chk_payment_status CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'REFUNDED'))
+    CONSTRAINT chk_payment_method
+        CHECK (method IN ('CASH', 'UPI', 'CARD', 'WALLET')),
+    CONSTRAINT chk_payment_status
+        CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'REFUNDED'))
 );
 
--- Audit log table
 CREATE TABLE audit_log (
     audit_id BIGSERIAL PRIMARY KEY,
     table_name VARCHAR(100) NOT NULL,
@@ -76,17 +73,6 @@ CREATE TABLE audit_log (
     changed_at TIMESTAMPTZ DEFAULT NOW(),
     before_json JSONB,
     after_json JSONB,
-    
-    -- Basic constraints
-    CONSTRAINT chk_audit_action CHECK (action IN ('INSERT', 'UPDATE', 'DELETE'))
+    CONSTRAINT chk_audit_action
+        CHECK (action IN ('INSERT', 'UPDATE', 'DELETE'))
 );
-
--- Display created tables
-SELECT 
-    schemaname,
-    tablename,
-    tableowner
-FROM pg_tables 
-WHERE schemaname = 'public' 
-ORDER BY tablename;
-

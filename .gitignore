@@ -1,78 +1,53 @@
-# OS
-Thumbs.db
-desktop.ini
-
-# Node / general
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Python
-__pycache__/
-*.py[cod]
-
-# IDEs
-.vscode/
-.idea/
-*.iml
-
-# Docker
+# Local environment and secrets
 .env
 .env.local
 .env.*.local
-docker-data/
-
-# Postgres
-pgdata/
-*.sql~
-
-# macOS
-.DS_Store
-
-# Logs
-logs/
-*.log
-
-# Dist / build
-dist/
-build/
-
-# Coverage
-coverage/
-*.lcov
-
-# Database volumes (docker-compose)
-postgres_data/
-pgadmin_data/
-# Environment variables
-.env
-.env.local
 .env.production
 
-# Docker volumes and data
+# Build and generated output
+api/target/
+target/
+build/
+dist/
+coverage/
+*.class
+*.lcov
+
+# Reproducible but machine-specific benchmark output
+benchmarks/results/
+
+# Local database/container data
 postgres_data/
 pgadmin_data/
+pgdata/
+docker-data/
 
-# Logs
-*.log
+# Logs and temporary files
 logs/
+*.log
+*.tmp
+*.temp
+*.sql~
 
-# OS generated files
+# Editors and operating systems
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
 .DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
-ehthumbs.db
 Thumbs.db
+ehthumbs.db
+desktop.ini
 
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Temporary files
-*.tmp
-*.temp
+# Language tooling
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+__pycache__/
+*.py[cod]

@@ -1,0 +1,70 @@
+-- Relational integrity, overlap protection, and query-supporting indexes.
+
+ALTER TABLE appointments
+    ADD CONSTRAINT fk_appointments_patient
+    FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE RESTRICT;
+
+ALTER TABLE appointments
+    ADD CONSTRAINT fk_appointments_doctor
+    FOREIGN KEY (doctor_id) REFERENCES doctors(doctor_id) ON DELETE RESTRICT;
+
+ALTER TABLE medical_records
+    ADD CONSTRAINT fk_medical_records_appointment
+    FOREIGN KEY (appointment_id) REFERENCES appointments(appointment_id)
+    ON DELETE SET NULL;
+
+ALTER TABLE medical_records
+    ADD CONSTRAINT fk_medical_records_patient
+    FOREIGN KEY (patient_id) REFERENCES patients(patient_id) ON DELETE RESTRICT;
+
+ALTER TABLE medical_records
+    ADD CONSTRAINT fk_medical_records_doctor
+    FOREIGN KEY (doctor_id) REFERENCES doctors(doctor_id) ON DELETE RESTRICT;
+
+ALTER TABLE payments
+    ADD CONSTRAINT fk_payments_appointment
+    FOREIGN KEY (appointment_id) REFERENCES appointments(appointment_id)
+    ON DELETE RESTRICT;
+
+ALTER TABLE patients ADD CONSTRAINT uk_patients_phone UNIQUE (phone);
+ALTER TABLE patients ADD CONSTRAINT uk_patients_email UNIQUE (email);
+ALTER TABLE payments
+    ADD CONSTRAINT uk_payments_appointment UNIQUE (appointment_id);
+
+-- Half-open ranges permit adjacent bookings while preventing concurrent
+-- overlapping BOOKED rows for one doctor.
+ALTER TABLE appointments
+    ADD CONSTRAINT excl_appointments_booked_doctor_time
+    EXCLUDE USING gist (
+        doctor_id WITH =,
+        tstzrange(start_ts, end_ts, '[)') WITH &&
+    )
+    WHERE (status = 'BOOKED');
+
+CREATE INDEX idx_appointments_doctor_start
+    ON appointments(doctor_id, start_ts);
+CREATE INDEX idx_appointments_patient_start
+    ON appointments(patient_id, start_ts);
+CREATE INDEX idx_appointments_status ON appointments(status);
+CREATE INDEX idx_appointments_start_ts ON appointments(start_ts);
+CREATE INDEX idx_appointments_booked_doctor_start
+    ON appointments(doctor_id, start_ts)
+    WHERE status = 'BOOKED';
+
+CREATE INDEX idx_patients_name ON patients(first_name, last_name);
+CREATE INDEX idx_patients_name_trgm
+    ON patients USING gin ((first_name || ' ' || last_name) gin_trgm_ops);
+CREATE INDEX idx_patients_phone_trgm
+    ON patients USING gin (phone gin_trgm_ops);
+
+CREATE INDEX idx_medical_records_appointment
+    ON medical_records(appointment_id);
+CREATE INDEX idx_medical_records_patient ON medical_records(patient_id);
+CREATE INDEX idx_medical_records_doctor ON medical_records(doctor_id);
+
+CREATE INDEX idx_payments_status ON payments(status);
+CREATE INDEX idx_payments_paid_at ON payments(paid_at);
+
+CREATE INDEX idx_audit_log_table_action
+    ON audit_log(table_name, action);
+CREATE INDEX idx_audit_log_changed_at ON audit_log(changed_at);

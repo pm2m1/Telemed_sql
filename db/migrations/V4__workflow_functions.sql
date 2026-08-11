@@ -1,7 +1,5 @@
--- Create stored procedures for appointment management
--- All functions use plpgsql and run in implicit transactions
+-- Transactional business workflows. Database constraints remain authoritative.
 
--- Function to book an appointment
 CREATE OR REPLACE FUNCTION book_appointment(
     p_patient_id UUID,
     p_doctor_id UUID,
@@ -17,36 +15,42 @@ BEGIN
     IF p_start_ts IS NULL OR p_end_ts IS NULL THEN
         RAISE EXCEPTION 'Appointment start and end times are required';
     END IF;
-
     IF p_end_ts <= p_start_ts THEN
-        RAISE EXCEPTION 'End time must be after start time. Start: %, End: %', p_start_ts, p_end_ts;
+        RAISE EXCEPTION
+            'End time must be after start time. Start: %, End: %',
+            p_start_ts,
+            p_end_ts;
     END IF;
-
     IF p_start_ts < CURRENT_TIMESTAMP THEN
-        RAISE EXCEPTION 'Cannot book appointment in the past. Start time: %, Current time: %',
-            p_start_ts, CURRENT_TIMESTAMP;
+        RAISE EXCEPTION
+            'Cannot book appointment in the past. Start time: %, Current time: %',
+            p_start_ts,
+            CURRENT_TIMESTAMP;
     END IF;
-
     IF p_amount_rs IS NULL OR p_amount_rs < 0 THEN
-        RAISE EXCEPTION 'Payment amount cannot be negative. Amount: %', p_amount_rs;
+        RAISE EXCEPTION
+            'Payment amount cannot be negative. Amount: %', p_amount_rs;
     END IF;
-
     IF p_payment_method IS NULL
        OR p_payment_method NOT IN ('CASH', 'UPI', 'CARD', 'WALLET') THEN
-        RAISE EXCEPTION 'Invalid payment method: %. Must be one of: CASH, UPI, CARD, WALLET', p_payment_method;
+        RAISE EXCEPTION
+            'Invalid payment method: %. Must be one of: CASH, UPI, CARD, WALLET',
+            p_payment_method;
     END IF;
 
-    -- Verify patient and doctor exist
-    IF NOT EXISTS (SELECT 1 FROM patients WHERE patient_id = p_patient_id) THEN
+    IF NOT EXISTS (
+        SELECT 1 FROM patients WHERE patient_id = p_patient_id
+    ) THEN
         RAISE EXCEPTION 'Patient not found. Patient ID: %', p_patient_id;
     END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM doctors WHERE doctor_id = p_doctor_id) THEN
+    IF NOT EXISTS (
+        SELECT 1 FROM doctors WHERE doctor_id = p_doctor_id
+    ) THEN
         RAISE EXCEPTION 'Doctor not found. Doctor ID: %', p_doctor_id;
     END IF;
 
-    -- This early check provides a friendly error in the common case. The
-    -- exclusion constraint remains the authoritative protection against races.
+    -- Friendly pre-check only. The GiST exclusion constraint is the final
+    -- protection when concurrent transactions race.
     IF EXISTS (
         SELECT 1
         FROM appointments
@@ -78,7 +82,8 @@ BEGIN
             p_start_ts,
             p_end_ts,
             'BOOKED'
-        ) RETURNING appointment_id INTO v_appointment_id;
+        )
+        RETURNING appointment_id INTO v_appointment_id;
     EXCEPTION
         WHEN exclusion_violation THEN
             RAISE EXCEPTION USING
@@ -91,7 +96,6 @@ BEGIN
                 );
     END;
 
-    -- Insert corresponding payment record
     INSERT INTO payments (
         appointment_id,
         amount_rs,
@@ -108,7 +112,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to cancel an appointment
 CREATE OR REPLACE FUNCTION cancel_appointment(p_appointment_id UUID)
 RETURNS BOOLEAN AS $$
 DECLARE
@@ -116,20 +119,24 @@ DECLARE
     v_payment_status VARCHAR(20);
     v_payment_id UUID;
 BEGIN
-    SELECT status INTO v_appointment_status
+    SELECT status
+    INTO v_appointment_status
     FROM appointments
     WHERE appointment_id = p_appointment_id
     FOR UPDATE;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'Appointment not found. Appointment ID: %', p_appointment_id;
+        RAISE EXCEPTION
+            'Appointment not found. Appointment ID: %', p_appointment_id;
     END IF;
-
     IF v_appointment_status != 'BOOKED' THEN
-        RAISE EXCEPTION 'Only BOOKED appointments can be cancelled. Current status: %', v_appointment_status;
+        RAISE EXCEPTION
+            'Only BOOKED appointments can be cancelled. Current status: %',
+            v_appointment_status;
     END IF;
 
-    SELECT payment_id, status INTO v_payment_id, v_payment_status
+    SELECT payment_id, status
+    INTO v_payment_id, v_payment_status
     FROM payments
     WHERE appointment_id = p_appointment_id
     FOR UPDATE;
@@ -144,8 +151,7 @@ BEGIN
         WHERE payment_id = v_payment_id;
     ELSIF v_payment_status = 'PENDING' THEN
         UPDATE payments
-        SET status = 'FAILED',
-            paid_at = NULL
+        SET status = 'FAILED', paid_at = NULL
         WHERE payment_id = v_payment_id;
     END IF;
 
@@ -153,23 +159,25 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to complete an appointment
 CREATE OR REPLACE FUNCTION complete_appointment(p_appointment_id UUID)
 RETURNS BOOLEAN AS $$
 DECLARE
     v_appointment_status VARCHAR(20);
 BEGIN
-    SELECT status INTO v_appointment_status
+    SELECT status
+    INTO v_appointment_status
     FROM appointments
     WHERE appointment_id = p_appointment_id
     FOR UPDATE;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'Appointment not found. Appointment ID: %', p_appointment_id;
+        RAISE EXCEPTION
+            'Appointment not found. Appointment ID: %', p_appointment_id;
     END IF;
-
     IF v_appointment_status != 'BOOKED' THEN
-        RAISE EXCEPTION 'Only BOOKED appointments can be completed. Current status: %', v_appointment_status;
+        RAISE EXCEPTION
+            'Only BOOKED appointments can be completed. Current status: %',
+            v_appointment_status;
     END IF;
 
     UPDATE appointments
@@ -180,7 +188,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to process payment
 CREATE OR REPLACE FUNCTION process_payment(
     p_appointment_id UUID,
     p_payment_status VARCHAR(20)
@@ -191,20 +198,26 @@ DECLARE
 BEGIN
     IF p_payment_status IS NULL
        OR p_payment_status NOT IN ('SUCCESS', 'FAILED') THEN
-        RAISE EXCEPTION 'Invalid payment status: %. Must be SUCCESS or FAILED', p_payment_status;
+        RAISE EXCEPTION
+            'Invalid payment status: %. Must be SUCCESS or FAILED',
+            p_payment_status;
     END IF;
 
-    SELECT status INTO v_current_status
+    SELECT status
+    INTO v_current_status
     FROM payments
     WHERE appointment_id = p_appointment_id
     FOR UPDATE;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'Payment not found for appointment. Appointment ID: %', p_appointment_id;
+        RAISE EXCEPTION
+            'Payment not found for appointment. Appointment ID: %',
+            p_appointment_id;
     END IF;
-
     IF v_current_status != 'PENDING' THEN
-        RAISE EXCEPTION 'Only PENDING payments can be processed. Current status: %', v_current_status;
+        RAISE EXCEPTION
+            'Only PENDING payments can be processed. Current status: %',
+            v_current_status;
     END IF;
 
     UPDATE payments
@@ -218,14 +231,3 @@ BEGIN
     RETURN TRUE;
 END;
 $$ LANGUAGE plpgsql;
-
--- Display created functions
-SELECT 
-    routine_name,
-    routine_type,
-    data_type as return_type
-FROM information_schema.routines 
-WHERE routine_schema = 'public'
-    AND routine_type = 'FUNCTION'
-ORDER BY routine_name;
-

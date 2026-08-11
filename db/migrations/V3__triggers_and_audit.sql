@@ -1,12 +1,8 @@
--- Create trigger functions and triggers for business rules enforcement
+-- Trigger functions for scheduling rules, auditing, and timestamps.
 
--- Function to prevent appointments from being created or rescheduled in the past
 CREATE OR REPLACE FUNCTION fn_no_past_appointments()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- Status-only updates remain valid after the appointment has started. This
-    -- permits legitimate completion and cancellation while still protecting the
-    -- scheduled time on inserts and reschedules.
     IF TG_OP = 'INSERT' THEN
         IF NEW.start_ts < CURRENT_TIMESTAMP THEN
             RAISE EXCEPTION
@@ -26,7 +22,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function for audit logging
 CREATE OR REPLACE FUNCTION fn_audit_appointments()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -65,12 +60,10 @@ BEGIN
     IF TG_OP = 'DELETE' THEN
         RETURN OLD;
     END IF;
-
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION fn_update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -79,56 +72,28 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create triggers
--- Prevent past appointments
 CREATE TRIGGER trg_no_past_appointments
     BEFORE INSERT OR UPDATE ON appointments
     FOR EACH ROW
     EXECUTE FUNCTION fn_no_past_appointments();
 
--- Audit appointments changes
 CREATE TRIGGER trg_audit_appointments
     AFTER INSERT OR UPDATE OR DELETE ON appointments
     FOR EACH ROW
     EXECUTE FUNCTION fn_audit_appointments();
 
--- Update timestamps for patients
 CREATE TRIGGER trg_patients_updated_at
     BEFORE UPDATE ON patients
-    FOR EACH ROW
-    EXECUTE FUNCTION fn_update_updated_at();
-
--- Update timestamps for doctors
+    FOR EACH ROW EXECUTE FUNCTION fn_update_updated_at();
 CREATE TRIGGER trg_doctors_updated_at
     BEFORE UPDATE ON doctors
-    FOR EACH ROW
-    EXECUTE FUNCTION fn_update_updated_at();
-
--- Update timestamps for appointments
+    FOR EACH ROW EXECUTE FUNCTION fn_update_updated_at();
 CREATE TRIGGER trg_appointments_updated_at
     BEFORE UPDATE ON appointments
-    FOR EACH ROW
-    EXECUTE FUNCTION fn_update_updated_at();
-
--- Update timestamps for medical_records
+    FOR EACH ROW EXECUTE FUNCTION fn_update_updated_at();
 CREATE TRIGGER trg_medical_records_updated_at
     BEFORE UPDATE ON medical_records
-    FOR EACH ROW
-    EXECUTE FUNCTION fn_update_updated_at();
-
--- Update timestamps for payments
+    FOR EACH ROW EXECUTE FUNCTION fn_update_updated_at();
 CREATE TRIGGER trg_payments_updated_at
     BEFORE UPDATE ON payments
-    FOR EACH ROW
-    EXECUTE FUNCTION fn_update_updated_at();
-
--- Display created triggers
-SELECT 
-    trigger_name,
-    event_manipulation,
-    action_timing,
-    action_statement
-FROM information_schema.triggers 
-WHERE trigger_schema = 'public'
-ORDER BY event_object_table, trigger_name;
-
+    FOR EACH ROW EXECUTE FUNCTION fn_update_updated_at();

@@ -2,73 +2,154 @@ name: CI
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [main]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test-sql:
+  database:
+    name: PostgreSQL migrations and tests
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: telemed
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: secret
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U postgres -d telemed" 
-          --health-interval=10s 
-          --health-timeout=5s 
-          --health-retries=5
+    timeout-minutes: 20
+    env:
+      COMPOSE_PROJECT_NAME: telemed_ci
+      POSTGRES_DB: telemed_ci
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ci-only-password
+      POSTGRES_PORT: "55432"
+      PGADMIN_PORT: "58080"
 
     steps:
-      - name: Checkout
+      - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Install psql client
+      - name: Validate static project files
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            git diff --check "origin/${GITHUB_BASE_REF}...HEAD"
+          else
+            git diff-tree --check --root -r HEAD
+          fi
+          docker compose --profile api config --quiet
+          bash -n demo/run_demo.sh
+          bash -n db/migrations/baseline_legacy.sh
+          bash -n db/tests/concurrency/run_concurrency_test.sh
+          bash -n benchmarks/run_benchmark.sh
 
-      - name: Wait for Postgres
+      - name: Start PostgreSQL
         run: |
           set -euo pipefail
-          for i in {1..30}; do
-            if pg_isready -h localhost -p 5432 -U postgres -d telemed; then
+          docker compose up -d postgres
+          for _ in {1..30}; do
+            if docker compose exec -T postgres sh -c \
+              'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'; then
               exit 0
             fi
             sleep 2
           done
+          docker compose logs postgres
           echo "PostgreSQL did not become healthy in time" >&2
           exit 1
 
-      - name: Run init scripts
-        env:
-          PGPASSWORD: secret
+      - name: Apply and validate Flyway migrations
         run: |
           set -euo pipefail
-          for f in db/init/*.sql; do
-            echo "Running $f"
-            psql \
-              -v ON_ERROR_STOP=1 \
-              postgresql://postgres@localhost:5432/telemed \
-              -f "$f"
-          done
+          docker compose run --rm flyway migrate
+          docker compose run --rm flyway validate
+          docker compose run --rm flyway info
 
-      - name: Run database tests
-        env:
-          PGPASSWORD: secret
+      - name: Run core schema and workflow tests
         run: |
           set -euo pipefail
-          for f in db/tests/*.sql; do
-            echo "Running test $f"
-            psql \
-              -v ON_ERROR_STOP=1 \
-              postgresql://postgres@localhost:5432/telemed \
-              -f "$f"
+          for file in \
+            db/tests/01_schema_tests.sql \
+            db/tests/02_booking_tests.sql \
+            db/tests/03_payment_tests.sql \
+            db/tests/04_trigger_tests.sql \
+            db/tests/05_view_tests.sql \
+            db/tests/06_concurrency_constraint_tests.sql
+          do
+            echo "Running ${file}"
+            docker compose exec -T postgres sh -c \
+              "psql -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -f /workspace/${file}"
           done
 
+      - name: Run medical-record integrity tests
+        run: |
+          set -euo pipefail
+          docker compose exec -T postgres sh -c \
+            'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /workspace/db/tests/07_medical_record_integrity_tests.sql'
+
+      - name: Run role and row-level-security tests
+        run: |
+          set -euo pipefail
+          docker compose exec -T postgres sh -c \
+            'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /workspace/db/tests/08_security_rls_tests.sql'
+
+      - name: Test runtime login provisioning
+        run: |
+          set -euo pipefail
+          for membership in telemed_app telemed_billing telemed_app; do
+            docker compose exec -T postgres sh -c \
+              "psql -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" \
+                -v login_name=telemed_ci_api \
+                -v login_password=ci-login-only \
+                -v membership=${membership} \
+                -f /workspace/db/security/provision_login.sql"
+          done
+          docker compose exec -T postgres sh -c \
+            'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+              -v login_name=telemed_ci_api \
+              -v membership=telemed_app \
+              -f /workspace/db/tests/09_login_provisioning_tests.sql'
+          if docker compose exec -T postgres sh -c \
+            'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+              -v login_name=telemed_app \
+              -v login_password=ci-login-only \
+              -v membership=telemed_app \
+              -f /workspace/db/security/provision_login.sql'; then
+            echo "Protected group role was incorrectly converted to LOGIN" >&2
+            exit 1
+          fi
+
+      - name: Run true two-session concurrency test
+        run: |
+          set -euo pipefail
+          bash ./db/tests/concurrency/run_concurrency_test.sh
+
+      - name: Stop disposable database
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  api:
+    name: Spring Boot API integration tests
+    needs: database
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: api/pom.xml
+
+      - name: Run API tests
+        run: |
+          set -euo pipefail
+          mvn -B -ntp -f api/pom.xml verify
