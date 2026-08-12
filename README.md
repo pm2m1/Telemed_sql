@@ -106,6 +106,31 @@ erDiagram
 
 `audit_log.row_id_text` is deliberately a logical reference rather than a foreign key, allowing audit history to survive deletion. `medical_records.appointment_id` remains nullable for standalone records. When it is present, a composite foreign key guarantees that the record's patient and doctor match the referenced appointment.
 
+## Project Preview
+
+### Database Schema
+
+The PostgreSQL data model covers patients, doctors, appointments,
+medical records, payments, and appointment audit history.
+
+![Telemedicine PostgreSQL ER diagram](docs/screenshots/database-erd.png)
+
+### End-to-End Demo
+
+The deterministic demo exercises appointment booking, payment processing,
+workflow transitions, audit logging, and analytical views using synthetic
+data before rolling the transaction back.
+
+![Telemedicine backend demo](docs/screenshots/demo-run.png)
+
+### Automated CI
+
+Flyway migrations, PostgreSQL integration tests, security and RLS checks,
+multi-session concurrency testing, and Spring Boot integration tests are
+validated through GitHub Actions.
+
+![GitHub Actions CI](docs/screenshots/github-actions-ci.png)
+
 ## Quick demo
 
 Start the database and apply migrations:
@@ -436,7 +461,7 @@ Heavy benchmarks are intentionally excluded from normal CI. CI does not deploy o
 
 ## Screenshots
 
-No screenshots are fabricated or linked. [docs/screenshots/README.md](docs/screenshots/README.md) lists useful real captures to take from a local run: migration output, terminal demo, schema inspection, CI, and analytical query results.
+[docs/screenshots/README.md](docs/screenshots/README.md) lists useful real captures to take from a local run: migration output, terminal demo, schema inspection, CI, and analytical query results.
 
 ## Known limitations
 
