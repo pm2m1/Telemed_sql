@@ -113,7 +113,7 @@ erDiagram
 The PostgreSQL data model covers patients, doctors, appointments,
 medical records, payments, and appointment audit history.
 
-![Telemedicine PostgreSQL ER diagram](docs/screenshots/database-erd.png)
+![Telemedicine PostgreSQL ER diagram](docs/screenshots/database-erd.jpeg)
 
 ### End-to-End Demo
 
