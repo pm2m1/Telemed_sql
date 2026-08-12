@@ -1,4 +1,4 @@
-# Telemedicine PostgreSQL Database
+# Telemedicine Backend Platform — PostgreSQL & Spring Boot
 
 [![CI](https://github.com/pm2m1/Telemed_sql/actions/workflows/ci.yml/badge.svg)](https://github.com/pm2m1/Telemed_sql/actions/workflows/ci.yml)
 
