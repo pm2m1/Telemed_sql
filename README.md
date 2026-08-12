@@ -79,7 +79,7 @@ erDiagram
     }
     MEDICAL_RECORDS {
         uuid record_id PK
-        uuid appointment_id FK_nullable
+        uuid appointment_id FK "nullable"
         uuid patient_id FK
         uuid doctor_id FK
         text diagnosis
@@ -87,7 +87,7 @@ erDiagram
     }
     PAYMENTS {
         uuid payment_id PK
-        uuid appointment_id FK_UK
+        uuid appointment_id FK, UK
         numeric amount_rs
         varchar method
         varchar status
