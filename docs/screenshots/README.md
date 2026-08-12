@@ -1,15 +1,22 @@
-# Screenshot capture guide
+# Project screenshots
 
-This directory intentionally contains no fabricated screenshots. Useful real
-portfolio captures can be created after running the project locally:
+This directory contains real captures produced from the running project.
 
-1. Flyway `info` showing successful V1-V7 migrations.
-2. The terminal demo showing booking, payment, completion, audit, and views.
-3. pgAdmin's schema browser showing tables, functions, policies, and views.
-4. The GitHub Actions run with database and API jobs passing.
-5. One representative `EXPLAIN (ANALYZE, BUFFERS)` benchmark plan.
+## Included
 
-Before publishing a capture, remove passwords, connection strings, local user
-paths, container identifiers, and any non-synthetic data. Record the command,
-PostgreSQL version, and date beside benchmark screenshots so the context is
-not misleading.
+- `database-erd.jpeg` — pgAdmin ER diagram of the six domain tables
+- `demo-run.png` — successful deterministic end-to-end demo
+- `github-actions-ci.png` — successful database and Spring Boot CI jobs
+
+All captures use synthetic/local development data and exclude credentials
+and sensitive information.
+
+Additional useful captures may include:
+
+- Flyway migration status
+- analytical view output
+- representative `EXPLAIN (ANALYZE, BUFFERS)` plans
+
+Benchmark screenshots should include the PostgreSQL version, dataset size,
+environment, and capture date so performance results are not presented
+without context.
