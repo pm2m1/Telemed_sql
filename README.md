@@ -197,20 +197,29 @@ The default ports are PostgreSQL `5432`, pgAdmin `8080`, and API `8081`. All can
    docker compose run --rm flyway info
    ```
 
-   ```
-    **Upgrading an older checkout?**
-      If Flyway reports that the `public` schema is non-empty but has no schema history table, do not delete the database volume. This usually means the database was created by the repository's former pre-Flyway initialization scripts.
-      Run the guarded legacy baseline helper:
-  ```powershell
-     ./db/migrations/baseline_legacy.ps1
-  ```
-    or on Bash/Linux:
-
-   ```bash
-      bash ./db/migrations/baseline_legacy.sh
-   ```
-
-   The helper validates the recognized legacy schema, records the appropriate Flyway baseline, and applies later migrations without intentionally deleting existing data. See [Upgrading a legacy local volume](#upgrading-a-legacy-local-volume) for details.
+   > **Upgrading an older checkout?**
+   >
+   > If Flyway reports that the `public` schema is non-empty but has no schema
+   > history table, do not delete the database volume. This usually means the
+   > database was created by the repository's former pre-Flyway initialization
+   > scripts.
+   >
+   > Run the guarded legacy baseline helper:
+   >
+   > ```powershell
+   > ./db/migrations/baseline_legacy.ps1
+   > ```
+   >
+   > Or on Bash/Linux:
+   >
+   > ```bash
+   > bash ./db/migrations/baseline_legacy.sh
+   > ```
+   >
+   > The helper validates the recognized legacy schema, records the appropriate
+   > Flyway baseline, and applies later migrations without intentionally deleting
+   > existing data. See [Upgrading a legacy local volume](#upgrading-a-legacy-local-volume)
+   > for details.
 
 5. Optionally load idempotent synthetic development data.
 
